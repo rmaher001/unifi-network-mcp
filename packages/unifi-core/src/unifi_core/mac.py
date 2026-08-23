@@ -66,14 +66,38 @@ def normalize_mac(mac: Any) -> Optional[str]:
     return mac.strip().lower() or None
 
 
+def _mac_digits(value: Any) -> Optional[str]:
+    """Return a MAC's twelve hex digits, or ``None`` if *value* is not one."""
+    normalized = normalize_mac(value)
+    if normalized is None or _MAC_RE.match(normalized) is None:
+        return None
+    return normalized.replace(":", "").replace("-", "")
+
+
 def mac_equal(a: Any, b: Any) -> bool:
-    """Return True if *a* and *b* are the same MAC address, ignoring case.
+    """Return True if *a* and *b* are the same MAC address.
+
+    Case and separator style are both ignored, because neither carries
+    meaning: one controller surface writes a device's address
+    ``1c:0b:8b:ee:f6:b5`` while another writes the same device
+    ``1c0b8beef6b5``, and treating those as two devices is the same class of
+    defect as treating two casings as two devices. This is not the guess
+    :func:`normalize_mac` declines to make - that one is about what to SEND,
+    where rewriting a separator would change the request; this is only about
+    what matches.
+
+    Values that are not MAC-shaped fall back to an exact comparison of the
+    normalized strings, so opaque identifiers keep their own equality: ``dev-1``
+    and ``dev1`` remain two different objects.
 
     Returns False whenever either side is missing or unusable. That guard is
     load-bearing: both would normalize to ``None``, and a bare ``==`` would
     then report a match between an empty query and a record carrying no
     ``mac`` field.
     """
+    digits_a = _mac_digits(a)
+    if digits_a is not None:
+        return digits_a == _mac_digits(b)
     normalized = normalize_mac(a)
     return normalized is not None and normalized == normalize_mac(b)
 
