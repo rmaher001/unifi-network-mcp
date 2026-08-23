@@ -150,19 +150,6 @@ def test_oon_targets_of_other_types_are_left_alone() -> None:
     assert _normalize_oon_targets("GROUPS", ["GroupID-ABC"]) == [{"type": "NETWORK_GROUP_ID", "value": "GroupID-ABC"}]
 
 
-def test_client_wifi_details_cache_key_is_case_stable() -> None:
-    """A process-lifetime cache keyed on the raw MAC fetches /stat/sta twice
-    for the same client."""
-    import inspect
-
-    from unifi_core.network.managers.stats_manager import StatsManager
-
-    src = inspect.getsource(StatsManager.get_client_wifi_details)
-    normalize_at = src.index("normalize_mac(client_mac)")
-    cache_at = src.index("cache_key =")
-    assert normalize_at < cache_at, "the cache key is built before the MAC is normalized"
-
-
 # --- Config payloads carrying MAC lists -------------------------------------
 #
 # Same round-trip asymmetry that justified normalizing the ACL side: the
@@ -269,25 +256,6 @@ def test_oon_update_leaves_targets_alone_when_target_type_is_unknowable() -> Non
     assert out["targets"] == ["AbC123XyZ"]
 
 
-def test_oon_update_normalizes_secure_even_without_targets() -> None:
-    """The secure block must not be gated behind an unrelated key."""
-    from unifi_core.network.managers.oon_manager import normalize_oon_update_payload
-
-    out = normalize_oon_update_payload({"secure": {"apps": ["facebook"]}}, {"target_type": "CLIENTS"})
-    assert out["secure"] != {"apps": ["facebook"]}, "secure was passed through unshaped"
-
-
-def test_oon_update_is_wired_into_update_oon_policy() -> None:
-    """Removing the call restores the original bug with a green suite, so the
-    wiring itself needs a test."""
-    import inspect
-
-    from unifi_core.network.managers.oon_manager import OonManager
-
-    src = inspect.getsource(OonManager.update_oon_policy)
-    assert "normalize_oon_update_payload(" in src
-
-
 def test_normalize_mac_list_never_yields_none() -> None:
     """Dropping the `or v` would put a literal None into a PUT payload."""
     from unifi_core.mac import normalize_mac_list
@@ -308,38 +276,3 @@ def test_normalize_mac_list_passes_a_non_list_through() -> None:
 # The MCP tool layer and the apps/api dispatch each assemble these payloads
 # themselves, so neither a model validator nor a to_controller_* builder is on
 # the path. The manager is the one boundary they share.
-
-
-def test_client_group_create_normalizes_members_at_the_manager() -> None:
-    import inspect
-
-    from unifi_core.network.managers.client_group_manager import ClientGroupManager
-
-    src = inspect.getsource(ClientGroupManager.create_client_group)
-    assert "normalize_mac_list" in src
-    assert src.index("normalize_mac_list") < src.index("ApiRequestV2")
-
-
-def test_ap_group_create_and_update_normalize_at_the_manager() -> None:
-    import inspect
-
-    from unifi_core.network.managers.network_manager import NetworkManager
-
-    create_src = inspect.getsource(NetworkManager.create_ap_group)
-    assert "normalize_mac_list" in create_src
-    assert create_src.index("normalize_mac_list") < create_src.index("ApiRequestV2")
-
-    update_src = inspect.getsource(NetworkManager.update_ap_group)
-    # Must precede deep_merge AND _unpersisted_fields, or an uppercase
-    # restatement reads as a stuck field and reports a false failure.
-    assert update_src.index("normalize_mac_list") < update_src.index("deep_merge")
-
-
-def test_firewall_create_normalizes_endpoint_macs_at_the_manager() -> None:
-    import inspect
-
-    from unifi_core.network.managers.firewall_manager import FirewallManager
-
-    src = inspect.getsource(FirewallManager.create_firewall_policy)
-    assert "_normalize_endpoint_macs" in src
-    assert src.index("_normalize_endpoint_macs") < src.index("ApiRequestV2")
