@@ -276,3 +276,50 @@ def test_normalize_mac_list_passes_a_non_list_through() -> None:
 # The MCP tool layer and the apps/api dispatch each assemble these payloads
 # themselves, so neither a model validator nor a to_controller_* builder is on
 # the path. The manager is the one boundary they share.
+
+
+# --- separator forms ---------------------------------------------------------
+#
+# Found by live QA, not by reasoning: the Access API client identifies a device
+# by a separator-less MAC (`Device.id` is "1c0b8beef6b5"), while the same
+# controller's topology payload writes it "1c:0b:8b:ee:f6:b5". Comparing those
+# with a case-only normalisation reports two spellings of one address as two
+# different devices.
+
+
+def test_mac_equal_ignores_separators() -> None:
+    """The same address written two ways is the same address. This is not the
+    guess `normalize_mac` refuses to make - that one is about what to SEND;
+    this is about what MATCHES."""
+    from unifi_core.mac import mac_equal
+
+    assert mac_equal("1c0b8beef6b5", "1c:0b:8b:ee:f6:b5")
+    assert mac_equal("1C0B8BEEF6B5", "1c:0b:8b:ee:f6:b5")
+    assert mac_equal("aa-bb-cc-dd-ee-ff", "aa:bb:cc:dd:ee:ff")
+
+
+def test_mac_equal_still_distinguishes_different_addresses() -> None:
+    from unifi_core.mac import mac_equal
+
+    assert not mac_equal("1c0b8beef6b5", "1c:0b:8b:ee:f6:b6")
+    assert not mac_equal("aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66")
+
+
+def test_mac_equal_does_not_loosen_non_mac_identifiers() -> None:
+    """Opaque ids are not addresses; stripping punctuation from them would
+    merge two distinct objects."""
+    from unifi_core.mac import mac_equal
+
+    assert not mac_equal("dev-1", "dev1")
+    assert not mac_equal("group-abc", "groupabc")
+    assert not mac_equal(None, None)
+    assert not mac_equal("", "")
+
+
+def test_normalize_mac_still_leaves_separators_alone() -> None:
+    """Outbound values keep the caller's separator: the comparison change must
+    not start rewriting what gets sent to the controller."""
+    from unifi_core.mac import normalize_mac
+
+    assert normalize_mac("AA-BB-CC-DD-EE-FF") == "aa-bb-cc-dd-ee-ff"
+    assert normalize_mac("1C0B8BEEF6B5") == "1c0b8beef6b5"

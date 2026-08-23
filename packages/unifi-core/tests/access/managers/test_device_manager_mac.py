@@ -167,3 +167,70 @@ async def test_reboot_resolves_the_controller_identifier_under_dual_auth() -> No
 
     assert preview["device_id"] == UNIQUE_ID, f"reboot would target {preview['device_id']!r}, which is not a unique_id"
     assert preview["device_name"] == "Entry Reader"
+
+
+# --- the shape a real controller actually returns -----------------------------
+#
+# The fixtures above write the MAC the same way on both sides, which is what
+# hid this: on a live controller the API client reports `Device.id` as
+# "1c0b8beef6b5" while the topology payload writes the same device
+# "1c:0b:8b:ee:f6:b5". A case-only comparison treats those as two devices, so
+# the reboot resolution found nothing and silently fell back to posting the
+# address.
+
+BARE_MAC = "1c0b8beef6b5"
+SEPARATED_MAC = "1c:0b:8b:ee:f6:b5"
+HUB_UNIQUE_ID = "89abcdef0123456789abcdef"
+
+MIXED_FORM_TOPOLOGY = {
+    "data": [
+        {
+            "floors": [
+                {
+                    "doors": [
+                        {
+                            "name": "Entry",
+                            "unique_id": "door-1",
+                            "device_groups": [
+                                [{"unique_id": HUB_UNIQUE_ID, "mac": SEPARATED_MAC, "name": "Hub", "type": "UA-Hub"}]
+                            ],
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
+
+
+def _mixed_form_manager() -> DeviceManager:
+    cm = MagicMock()
+    cm.has_api_client = True
+    cm.has_proxy = True
+    cm.api_client = MagicMock()
+    cm.api_client.get_devices = AsyncMock(return_value=[Device(id=BARE_MAC, name="Hub", type="UA-Hub", is_online=True)])
+    cm.proxy_request = AsyncMock(return_value=MIXED_FORM_TOPOLOGY)
+    cm.extract_data = MagicMock(side_effect=lambda d: d.get("data", []))
+    return DeviceManager(cm)
+
+
+@pytest.mark.asyncio
+async def test_reboot_resolves_across_separator_forms() -> None:
+    """The API arm answers with the bare form; the topology holds the
+    separated one. Both name the same hub, so the reboot must target its
+    unique_id."""
+    mgr = _mixed_form_manager()
+
+    preview = await mgr.reboot_device(BARE_MAC.upper())
+
+    assert preview["device_id"] == HUB_UNIQUE_ID, (
+        f"reboot would post {preview['device_id']!r}, which is an address rather than a unique_id"
+    )
+
+
+@pytest.mark.asyncio
+async def test_lookup_accepts_either_separator_form() -> None:
+    mgr = _mixed_form_manager()
+
+    assert (await mgr.get_device(SEPARATED_MAC))["name"] == "Hub"
+    assert (await mgr.get_device(BARE_MAC))["name"] == "Hub"
