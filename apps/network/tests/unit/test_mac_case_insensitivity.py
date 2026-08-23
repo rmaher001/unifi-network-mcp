@@ -290,15 +290,38 @@ async def test_switch_reads_use_a_lowercase_mac_in_the_url(mock_connection, meth
 
 
 @pytest.mark.asyncio
-async def test_rename_device_sends_a_lowercase_mac(mock_connection):
+async def test_rename_device_resolves_an_uppercase_mac_and_writes(mock_connection):
+    """Rename is the case where "did it send an uppercase MAC?" is the wrong
+    question: the write is addressed by device id, so the MAC never appears in
+    the payload and a test that only checks its absence passes when nothing was
+    sent at all. What matters is that the uppercase MAC resolves to the device
+    and the rename actually completes.
+    """
     device = MagicMock()
     device.mac = LOWER
     device.id = "dev1"
     device.raw = {"mac": LOWER, "_id": "dev1"}
     mock_connection.controller.devices.values.return_value = [device]
     mgr = DeviceManager(mock_connection)
-    try:
+
+    assert await mgr.rename_device(UPPER, "new-name") is True
+
+    writes = [c.args[0] for c in mock_connection.request.call_args_list if c.args]
+    assert len(writes) == 1, f"expected exactly one write, got {len(writes)}"
+    assert writes[0].method == "put"
+    assert writes[0].path == "/rest/device/dev1"
+    assert writes[0].data == {"name": "new-name"}
+
+
+@pytest.mark.asyncio
+async def test_rename_device_still_fails_for_a_mac_that_is_not_there(mock_connection):
+    """The lookup must stay a real lookup: case-folding both sides must not
+    turn a genuine miss into a match."""
+    from unifi_core.exceptions import UniFiNotFoundError
+
+    mock_connection.controller.devices.values.return_value = []
+    mgr = DeviceManager(mock_connection)
+
+    with pytest.raises(UniFiNotFoundError):
         await mgr.rename_device(UPPER, "new-name")
-    except Exception:
-        pass  # the write path may need more of the controller than this mock offers
-    assert not any(UPPER in str(d) for d in _sent(mock_connection)), _sent(mock_connection)
+    assert not [c for c in mock_connection.request.call_args_list if c.args], "a write was issued for a missing device"

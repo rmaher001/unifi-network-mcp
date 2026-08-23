@@ -138,7 +138,7 @@ def normalize_oon_create_payload(policy_data: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_oon_update_payload(
     update_data: Dict[str, Any], existing: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Apply the create path's shaping to a PARTIAL update.
+    """Shape a PARTIAL update's ``targets`` the way the create path does.
 
     ``target_type`` decides how a target is shaped, and a partial update need
     not restate it - so fall back to the policy already on the controller.
@@ -147,10 +147,16 @@ def normalize_oon_update_payload(
     caller sent it. Guessing would be worse than doing nothing: the default is
     ``MAC``, which lowercases the value, and a NETWORK_GROUP_ID is an opaque
     identifier that a case change renames.
+
+    ``secure`` is deliberately NOT shaped here. The create normaliser fills in
+    an ``internet.mode`` when the caller did not give one, which is right for a
+    new policy and wrong for an update: the caller's dict is merged over the
+    stored policy and PUT back whole, so an invented mode overwrites real
+    configuration - a bare ``{"enabled": false}`` would replace a stored
+    ``BLOCKLIST`` with ``TURN_OFF_INTERNET``. A caller who wants a mode changed
+    can still say so, and that passes through untouched.
     """
     normalized = update_data.copy()
-    if "secure" in normalized:
-        normalized["secure"] = _normalize_secure_config(normalized["secure"])
     if "targets" not in normalized:
         return normalized
     target_type = normalized.get("target_type") or (existing or {}).get("target_type")

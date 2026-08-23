@@ -93,3 +93,77 @@ async def test_apply_reboot_posts_to_the_unique_id_not_the_callers_mac() -> None
     paths = [c.args[1] for c in mgr._cm.proxy_request.call_args_list if len(c.args) > 1]
     assert f"devices/{UNIQUE_ID}/reboot" in paths, paths
     assert not any(UPPER in p for p in paths), f"the caller's raw MAC reached the URL: {paths}"
+
+
+# --- dual auth: the public API path ------------------------------------------
+#
+# The tests above force `has_api_client = False` so they exercise the proxy,
+# which is the arm that matches on MAC. That left the API arm untested, and it
+# is a different shape entirely: `py-unifi-access`'s `Device` carries the MAC
+# in `id` and has no `mac` attribute at all, so matching `mac_equal` against
+# `.mac` compares against None on every row.
+
+Device = pytest.importorskip("unifi_access_api").Device
+
+
+def _dual_auth_manager() -> DeviceManager:
+    """A controller answering on BOTH paths, which is the normal deployment."""
+    cm = MagicMock()
+    cm.has_api_client = True
+    cm.has_proxy = True
+    cm.api_client = MagicMock()
+    cm.api_client.get_devices = AsyncMock(
+        return_value=[
+            Device(id=LOWER, name="Entry Reader", type="UA-G2", is_online=True),
+            Device(id=OTHER_MAC, name="Side Reader", type="UA-G2", is_online=True),
+        ]
+    )
+    cm.proxy_request = AsyncMock(return_value=TOPOLOGY)
+    cm.extract_data = MagicMock(side_effect=lambda d: d.get("data", []))
+    return DeviceManager(cm)
+
+
+def test_the_real_device_model_has_no_mac_attribute() -> None:
+    """The premise, pinned: if the dependency ever grows a `mac`, the mapping
+    below should be revisited rather than silently kept."""
+    device = Device(id=LOWER)
+    assert not hasattr(device, "mac") or getattr(device, "mac", None) is None
+    assert device.id == LOWER
+
+
+@pytest.mark.asyncio
+async def test_api_path_accepts_an_uppercase_mac() -> None:
+    """`Device.id` IS the MAC, so it has to be compared as one."""
+    mgr = _dual_auth_manager()
+
+    device = await mgr.get_device(UPPER)
+
+    assert device["name"] == "Entry Reader"
+
+
+@pytest.mark.asyncio
+async def test_api_path_reports_the_id_as_a_mac() -> None:
+    """Labelling the MAC as `unique_id` invites the reboot path to post it as
+    the controller's own identifier, which is a different namespace."""
+    mgr = _dual_auth_manager()
+
+    device = await mgr.get_device(LOWER)
+
+    assert device["mac"] == LOWER, "the MAC was reported as absent when it was sitting in `id`"
+    assert device.get("unique_id") != LOWER, "a MAC was presented as the controller's unique_id"
+
+
+@pytest.mark.asyncio
+async def test_reboot_resolves_the_controller_identifier_under_dual_auth() -> None:
+    """The reboot target must be the identifier the controller indexes by.
+
+    The API path knows the device by MAC and the controller's reboot endpoint
+    does not, so the MAC has to be resolved through the proxy topology even
+    though the API client answered the lookup.
+    """
+    mgr = _dual_auth_manager()
+
+    preview = await mgr.reboot_device(UPPER)
+
+    assert preview["device_id"] == UNIQUE_ID, f"reboot would target {preview['device_id']!r}, which is not a unique_id"
+    assert preview["device_name"] == "Entry Reader"
