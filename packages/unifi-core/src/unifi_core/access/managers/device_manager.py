@@ -53,7 +53,7 @@ _COMPACT_DEVICE_KEYS = frozenset(
     }
 )
 
-_API_DEVICE_LIST_KEYS = ("id", "name", "type", "connected", "firmware_version")
+_API_DEVICE_LIST_KEYS = ("id", "name", "type", "connected", "firmware_version", "mac", "ip")
 
 
 class DeviceManager:

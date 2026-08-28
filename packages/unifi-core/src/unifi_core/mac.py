@@ -98,8 +98,10 @@ def mac_equal(a: Any, b: Any) -> bool:
     digits_a = _mac_digits(a)
     if digits_a is not None:
         return digits_a == _mac_digits(b)
-    normalized = normalize_mac(a)
-    return normalized is not None and normalized == normalize_mac(b)
+    # Non-MAC values are opaque identifiers. Preserve their exact comparison
+    # semantics: case-folding one here can select a different controller
+    # resource whose identifier differs only by case.
+    return isinstance(a, str) and isinstance(b, str) and bool(a) and a == b
 
 
 def normalize_mac_list(values: Any) -> Any:

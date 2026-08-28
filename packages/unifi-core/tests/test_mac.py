@@ -312,6 +312,8 @@ def test_mac_equal_does_not_loosen_non_mac_identifiers() -> None:
 
     assert not mac_equal("dev-1", "dev1")
     assert not mac_equal("group-abc", "groupabc")
+    assert not mac_equal("Device-ABC", "device-abc")
+    assert mac_equal("Device-ABC", "Device-ABC")
     assert not mac_equal(None, None)
     assert not mac_equal("", "")
 
