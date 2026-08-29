@@ -111,11 +111,7 @@ class Event:
             door_id=norm.door_id,
             user_id=norm.user_id,
             credential_id=norm.credential_id,
-            # Read ``message`` from the row rather than the model: the declared
-            # unifi-core floor has no ``message`` field, so ``norm.message``
-            # raises AttributeError and 500s every events request until a core
-            # release lands. The row carries it at every floor.
-            message=_get(source, "message"),
+            message=norm.message,
             result=norm.result,
         )
         inst._door_id = norm.door_id

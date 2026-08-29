@@ -425,10 +425,9 @@ def test_projection_unwraps_a_raw_wrapped_row() -> None:
     assert projected.timestamp is not None
 
 
-def test_projection_reads_message_without_touching_the_model_attribute() -> None:
-    """The declared unifi-core floor has no `message` field on Event, so
-    reading `norm.message` raises AttributeError and 500s every events
-    request. The value must come from the row."""
+def test_projection_reads_message_from_the_normalized_model() -> None:
+    """The declared Core floor owns the canonical event projection, including
+    the human-readable message exposed by GraphQL and REST."""
     from unifi_api.graphql.types.access.events import Event
 
     assert Event.from_manager_output({"id": "e1", "message": "Access Granted (Face)"}).message == (
