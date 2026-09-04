@@ -536,6 +536,7 @@ type Device {
   ports: JSON
   systemStats: JSON
   generalTemperature: Float
+  temperatures: JSON
 
   """Clients currently connected through this AP/switch."""
   portClients: [Client!]!
