@@ -545,6 +545,8 @@ type Device {
   state: String
   ip: String
   ports: JSON
+  systemStats: JSON
+  generalTemperature: Float
 
   """Clients currently connected through this AP/switch."""
   portClients: [Client!]!
